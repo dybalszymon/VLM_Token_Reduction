@@ -1,0 +1,88 @@
+# =============================================================================
+# Longitudinal 3D CT VLM token reduction - main configuration
+#
+# String values support ${VAR} and ${VAR:-default} environment expansion.
+# On PLGrid, $SCRATCH is set automatically; locally everything falls back to
+# ./scratch inside the repository. Relative paths are resolved against the
+# project root.
+# =============================================================================
+
+seed: 42
+deterministic: false
+
+paths:
+  scratch: ${SCRATCH:-./scratch}
+  hf_home: ${HF_HOME:-${SCRATCH:-./scratch}/.cache/huggingface}
+  # Root of the CT-RATE Hugging Face snapshot (the folder containing `dataset/`).
+  ct_rate_root: ${CT_RATE_ROOT:-${SCRATCH:-./scratch}/data/CT-RATE}
+  # All generated artefacts (pair CSVs, preprocessed volumes, features, checkpoints).
+  output_root: ${PROJECT_OUTPUT:-${SCRATCH:-./scratch}/vlm_token_reduction}
+
+ct_rate:
+  # Relative to paths.ct_rate_root.
+  metadata_csvs:
+    - dataset/metadata/train_metadata.csv
+    - dataset/metadata/validation_metadata.csv
+  report_csvs:
+    - dataset/radiology_text_reports/train_reports.csv
+    - dataset/radiology_text_reports/validation_reports.csv
+  # Volume directory per official CT-RATE split prefix (train_* / valid_*).
+  # Both nested (train/train_1/train_1_a/train_1_a_1.nii.gz) and flat layouts are resolved.
+  volume_dirs:
+    train: dataset/train
+    valid: dataset/valid
+
+pairing:
+  date_column: StudyDate
+  date_format: "%Y%m%d"
+  # Number of timepoints per sample: 2 -> (T_minus_1, T_0); K -> (T_minus_{K-1}, ..., T_0).
+  window_size: 2
+  # Windows containing two consecutive studies closer than this are dropped
+  # (same-day studies are usually re-scans / contrast phases, not follow-ups).
+  min_delta_days: 1
+  # Which reconstruction to keep per study: "first" = lowest reconstruction index.
+  reconstruction_policy: first
+  # If true, official CT-RATE `valid_*` patients form the test split and the
+  # train/val ratios are applied to official `train_*` patients only. Keep this
+  # on when using pretrained CT-CLIP / CT-CHAT weights, which were trained on
+  # the official train split (otherwise the test set leaks into pretraining).
+  respect_official_split: true
+  split_ratios:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+  micro_subset:
+    n_patients: 50
+    source_split: train
+  output_dir: pairs  # relative to paths.output_root
+
+preprocessing:
+  # Stage 1: HU windowing. ScaleIntensityRanged maps [a_min, a_max] -> [b_min, b_max].
+  # NOTE: the public CT-CLIP checkpoints were trained on HU clipped to
+  # [-1000, 1000] and scaled to [-1, 1]. Use those values when feeding a frozen
+  # pretrained encoder; the narrower lung/mediastinum window below is the
+  # thesis default for fine-tuned / retrained encoders.
+  hu_window:
+    a_min: -1000
+    a_max: 400
+    b_min: 0.0
+    b_max: 1.0
+    clip: true
+  # Apply RescaleSlope / RescaleIntercept from the metadata CSV before windowing.
+  # Enable only if the NIfTI files store raw detector values rather than HU.
+  apply_metadata_rescale: false
+  orientation: RAS
+  foreground:
+    # Threshold in the *windowed* intensity space (0.05 ~= -930 HU with the default window).
+    threshold: 0.05
+    margin: 8
+  # "resize":   Resized to target_size (anisotropic stretch after cropping).
+  # "ct_clip":  Spacingd(target_spacing) + ResizeWithPadOrCropd(target_size),
+  #             preserving physical aspect ratio like the original CT-CLIP pipeline.
+  spatial_mode: resize
+  target_size: [480, 480, 240]      # (H, W, D) in MONAI channel-first order
+  target_spacing: [0.75, 0.75, 1.5]  # mm, used only by spatial_mode=ct_clip
+  cache:
+    dir: preprocessed  # relative to paths.output_root
+    dtype: float16     # 480x480x240 is ~110 MB in fp16, ~221 MB in fp32 per volume
+  num_workers: 8

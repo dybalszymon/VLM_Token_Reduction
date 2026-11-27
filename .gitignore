@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Local data / outputs (real data lives on $SCRATCH)
+scratch/
+data/
+outputs/
+*.nii
+*.nii.gz
+*.pt
+*.pt.tmp
+
+# SLURM logs
+logs/*
+!logs/.gitkeep

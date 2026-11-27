@@ -1,0 +1,16 @@
+# On PLGrid install a CUDA build of torch first, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.2
+monai>=1.3
+nibabel>=5.0
+transformers>=4.40
+peft>=0.10
+bitsandbytes>=0.43
+accelerate>=0.30
+huggingface_hub>=0.23
+einops>=0.7
+numpy>=1.24
+pandas>=2.0
+scikit-learn>=1.3
+pyyaml>=6.0
+tqdm>=4.66
